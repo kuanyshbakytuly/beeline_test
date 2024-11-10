@@ -1,8 +1,9 @@
 import base64
 import requests
 
-with open("image copy.png", "rb") as image_file:
-    base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+img_path = "0.png"
+with open(img_path, "rb") as f:
+    base64_image = base64.b64encode(f.read()).decode("utf-8")
 
 payload = {"image_base64": base64_image}
 

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import torch
-from model import Model
+import onnxruntime as ort
+import numpy as np
 from typing import List
 from PIL import Image
 import base64
@@ -10,10 +10,8 @@ import torchvision.transforms as transforms
 
 app = FastAPI()
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = Model(num_classes=4).to(device)
-model.load_state_dict(torch.load("model.pth", map_location=device, weights_only=True))
-model.eval()
+# Load the ONNX model
+onnx_session = ort.InferenceSession("model_onnx.onnx")
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -32,14 +30,16 @@ async def predict(request: PredictionRequest):
     try:
         image_data = base64.b64decode(request.image_base64)
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
-        image_tensor = transform(image).unsqueeze(0).to(device)
+        image_tensor = transform(image).unsqueeze(0)
+        image_np = image_tensor.numpy()
 
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid input format") from e
 
-    with torch.no_grad():
-        outputs = model(image_tensor)
-        _, predicted_labels = torch.max(outputs, dim=1)
+    inputs = {onnx_session.get_inputs()[0].name: image_np}
 
-    predictions = predicted_labels.cpu().tolist()
+    outputs = onnx_session.run(None, inputs)
+    predicted_labels = np.argmax(outputs[0], axis=1)
+
+    predictions = predicted_labels.tolist()
     return PredictionResponse(predictions=predictions)
